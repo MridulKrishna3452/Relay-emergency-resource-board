@@ -1,0 +1,102 @@
+// Relay data model.
+// SQLite does not support Prisma enums, so enum-like columns are Strings whose
+// allowed values are enforced by Zod (see src/lib/constants.ts). This keeps the
+// schema portable: switching to Postgres only needs provider + DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  phone              String
+  passwordHash       String
+  role               String // REQUESTER | VOLUNTEER | ADMIN
+  city               String
+  area               String
+  lat                Float?
+  lng                Float?
+  verificationStatus String   @default("NOT_REQUIRED") // NOT_REQUIRED | PENDING | APPROVED | REJECTED
+  verificationNote   String?
+  idProofText        String?
+  skills             String?
+  hasVehicle         Boolean  @default(false)
+  verifiedAt         DateTime?
+  createdAt          DateTime @default(now())
+
+  requests      Request[]       @relation("RequesterRequests")
+  assigned      Request[]       @relation("VolunteerRequests")
+  statusChanges StatusHistory[]
+  flags         Flag[]
+
+  @@index([role, verificationStatus])
+}
+
+model Request {
+  id             String    @id @default(cuid())
+  title          String
+  category       String // WATER | FOOD | TRANSPORT | SHELTER | OTHER_ESSENTIALS
+  description    String
+  quantity       Int
+  peopleAffected Int
+  priority       String // CRITICAL | HIGH | MEDIUM | LOW
+  status         String    @default("OPEN") // OPEN | ACCEPTED | IN_PROGRESS | FULFILLED | CANCELLED
+  city           String
+  area           String
+  addressLine    String
+  lat            Float?
+  lng            Float?
+  contactPhone   String
+  requesterId    String
+  volunteerId    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  fulfilledAt    DateTime?
+
+  requester User            @relation("RequesterRequests", fields: [requesterId], references: [id])
+  volunteer User?           @relation("VolunteerRequests", fields: [volunteerId], references: [id])
+  history   StatusHistory[]
+  flags     Flag[]
+
+  @@index([status])
+  @@index([city, area])
+  @@index([requesterId])
+  @@index([volunteerId])
+}
+
+model StatusHistory {
+  id          String   @id @default(cuid())
+  requestId   String
+  fromStatus  String?
+  toStatus    String
+  changedById String
+  note        String?
+  createdAt   DateTime @default(now())
+
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  changedBy User    @relation(fields: [changedById], references: [id])
+
+  @@index([requestId, createdAt])
+}
+
+model Flag {
+  id           String   @id @default(cuid())
+  requestId    String
+  reportedById String
+  reason       String
+  resolved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  request    Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  reportedBy User    @relation(fields: [reportedById], references: [id])
+
+  @@unique([requestId, reportedById])
+  @@index([resolved])
+}
